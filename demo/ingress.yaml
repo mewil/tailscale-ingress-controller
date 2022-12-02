@@ -1,0 +1,22 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tailscale-ingress
+spec:
+# Uncomment the tls block below to generate a certificate for your Tailscale node
+# (Requires going to "Configure HTTPS" in the Tailscale admin panel)
+#  tls:
+#    - hosts:
+#        - demo
+  rules:
+    - host: demo
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: demo-backend
+                port:
+                  number: 8080
