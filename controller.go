@@ -47,7 +47,7 @@ func newController(tsAuthKey string) *controller {
 	}
 }
 
-func (c *controller) getBackendUrl(host, path string) (*url.URL, error) {
+func (c *controller) getBackendUrl(host, path string, rawquery string) (*url.URL, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	h, ok := c.hosts[host]
@@ -60,9 +60,10 @@ func (c *controller) getBackendUrl(host, path string) (*url.URL, error) {
 	for _, p := range h.pathPrefixes {
 		if strings.HasPrefix(path, p.value) {
 			return &url.URL{
-				Scheme: p.backend.Scheme,
-				Host:   p.backend.Host,
-				Path:   path,
+				Scheme:   p.backend.Scheme,
+				Host:     p.backend.Host,
+				Path:     path,
+				RawQuery: rawquery,
 			}, nil
 		}
 	}
@@ -225,7 +226,7 @@ func (c *controller) update(payload *update) {
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Hack since the host will include a tailnet name when using TLS.
 			rh := strings.Split(r.Host, ".")[0]
-			backendURL, err := c.getBackendUrl(rh, r.URL.Path)
+			backendURL, err := c.getBackendUrl(rh, r.URL.Path, r.URL.RawQuery)
 			if err != nil {
 				log.Printf("upstream server %s not found: %s", rh, err.Error())
 				http.Error(w, fmt.Sprintf("upstream server %s not found", rh), http.StatusNotFound)
