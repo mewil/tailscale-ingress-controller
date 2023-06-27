@@ -3,7 +3,6 @@ package main
 import (
 	"crypto/tls"
 	"fmt"
-	"k8s.io/api/networking/v1"
 	"log"
 	"net"
 	"net/http"
@@ -14,6 +13,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	v1 "k8s.io/api/networking/v1"
 	"tailscale.com/tsnet"
 )
 
