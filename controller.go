@@ -226,6 +226,7 @@ func (c *controller) update(payload *update) {
 			rh := strings.Split(r.Host, ".")[0]
 			backendURL, err := c.getBackendUrl(rh, r.URL.Path)
 			if err != nil {
+				log.Printf("upstream server %s not found: %s", rh, err.Error())
 				http.Error(w, fmt.Sprintf("upstream server %s not found", rh), http.StatusNotFound)
 				return
 			}
