@@ -5,7 +5,7 @@ The controller will [create a Tailscale node](https://tailscale.com/blog/tsnet-v
 
 Try it out by applying the resources in the demo directory:
 ```
-git clone https://github.com/mewil/tailscale-ingress-controller
+git clone https://github.com/valentinalexeev/tailscale-ingress-controller
 cd tailscale-ingress-controller/demo
 export TS_AUTHKEY=<your authkey>
 sed "s/\$TS_AUTHKEY/$TS_AUTHKEY/g" * | kubectl apply -f -
@@ -25,3 +25,8 @@ If the host is also listed in the `tls` section of the Ingress spec (see comment
 - Store Tailscale state in a Kubernetes Secret
 - Support Ingress Classes
 - High Availability
+- Funnel support
+
+## Authors
+- Michael Wilson http://github.com/mewil
+- Valentin Alekseev http://github.com/valentinalexeev
