@@ -223,10 +223,7 @@ func (c *controller) update(payload *update) {
 
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Hack since the host will include a tailnet name when using TLS.
-			rh := r.Host
-			if h.useTls && strings.HasPrefix(rh, h.tsServer.Hostname) {
-				rh = h.tsServer.Hostname
-			}
+			rh := strings.Split(r.Host, ".")[0]
 			backendURL, err := c.getBackendUrl(rh, r.URL.Path)
 			if err != nil {
 				http.Error(w, fmt.Sprintf("upstream server %s not found", rh), http.StatusNotFound)
