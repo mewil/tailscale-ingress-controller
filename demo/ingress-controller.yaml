@@ -61,7 +61,7 @@ spec:
       serviceAccountName: tailscale-ingress-controller
       containers:
         - name: tailscale-ingress-controller
-          image: mewil/tailscale-ingress-controller:latest
+          image: valentinalexeev/tailscale-ingress-controller:latest
           env:
             - name: TS_AUTHKEY
               valueFrom:
