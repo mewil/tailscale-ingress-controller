@@ -236,3 +236,18 @@ func (c *controller) update(payload *update) {
 		c.hosts[n].started = true
 	}
 }
+
+func (c *controller) shutdown() {
+	for n, h := range c.hosts {
+		if h.started {
+			log.Println("deleting host ", n)
+			if err := h.httpServer.Close(); err != nil {
+				log.Printf("failed to close http server: %v", err)
+			}
+			if err := h.tsServer.Close(); err != nil {
+				log.Printf("failed to close ts server: %v", err)
+			}
+			delete(c.hosts, n)
+		}
+	}
+}

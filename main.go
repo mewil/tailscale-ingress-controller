@@ -2,18 +2,19 @@ package main
 
 import (
 	"context"
-	"github.com/bep/debounce"
-	"k8s.io/api/networking/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/client-go/informers"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/cache"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/bep/debounce"
+	v1 "k8s.io/api/networking/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
 )
 
 type update struct {
@@ -75,6 +76,7 @@ func main() {
 	signal.Notify(s, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-s
+		c.shutdown()
 		log.Println("shutting down")
 		cancel()
 		os.Exit(0)
