@@ -58,7 +58,11 @@ func (c *controller) getBackendUrl(host, path string) (*url.URL, error) {
 	}
 	for _, p := range h.pathPrefixes {
 		if strings.HasPrefix(path, p.value) {
-			return p.backend, nil
+			return &url.URL{
+				Scheme: p.backend.Scheme,
+				Host:   p.backend.Host,
+				Path:   path,
+			}, nil
 		}
 	}
 	return nil, fmt.Errorf("path not found")
