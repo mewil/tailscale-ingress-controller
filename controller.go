@@ -129,12 +129,33 @@ func (c *controller) update(payload *update) {
 					continue
 				}
 
+				var port int32
+
+				if path.Backend.Service.Port.Name != "" {
+					_, addrs, err := net.LookupSRV(
+						path.Backend.Service.Port.Name,
+						"tcp",
+						fmt.Sprintf("%s.%s.svc.cluster.local", path.Backend.Service.Name, ingress.Namespace))
+					if err == nil {
+						for _, service := range addrs {
+							// XXX: is there a possibility of multiple answers for the k8s SRV request?
+							port = int32(service.Port)
+							break
+						}
+					} else {
+						log.Printf("Unable to resolve service to port number: %s: %s", path.Backend.Service.Port.Name, err.Error())
+						continue
+					}
+				} else {
+					port = path.Backend.Service.Port.Number
+				}
+
 				p := &hostPath{
 					value: path.Path,
 					exact: *path.PathType == v1.PathTypeExact,
 					backend: &url.URL{
 						Scheme: "http",
-						Host:   fmt.Sprintf("%s:%d", path.Backend.Service.Name, path.Backend.Service.Port.Number),
+						Host:   fmt.Sprintf("%s.%s.svc.cluster.local:%d", path.Backend.Service.Name, ingress.Namespace, port),
 					},
 				}
 
