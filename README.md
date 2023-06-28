@@ -58,6 +58,20 @@ spec:
 
 Please refer to the Tailscale documentation on additional opt-in actions (nodeAttrs and ACL tag set-up) required to make Funnel enabled for the services.
 
+### TCP service support
+The TCP support was inspired by the ``ingress-nginx`` and relies on a dedicated ConfigMap with a mapping between virtual Tailscale nodes and kubernetes services.
+
+To configure ``tailscale-ingress-controller`` to proxy TCP requests the following settings must be done:
+* Create a new ConfigMap that will include service mappings. The notation of the config map is the following:
+```yaml
+...
+data:
+  # <Host>.<Port>: [<Namespace>/]<Service>:<Port>
+  # A sample mapping to allow connection to the Clickhouse native port (deployed from a Bitnami Helm chart)
+  clickhouse.9000: clickhouse/clickhouse-1687979852:9000
+```
+* Deploy controller with an additional environment variable ``TCP_SERVICES_CONFIGMAP`` set to the name of the newly created ConfigMap.
+
 ## Future Work
 - Store Tailscale state in a Kubernetes Secret
 - Support Ingress Classes

@@ -14,6 +14,7 @@ rules:
     resources:
       - "services"
       - "secrets"
+      - "configmaps"
     verbs:
       - "get"
       - "watch"
@@ -61,10 +62,12 @@ spec:
       serviceAccountName: tailscale-ingress-controller
       containers:
         - name: tailscale-ingress-controller
-          image: valentinalexeev/tailscale-ingress-controller:stable
+          image: valentinalexeev/tailscale-ingress-controller:latest
           env:
             - name: TS_AUTHKEY
               valueFrom:
                 secretKeyRef:
                   name: tailscale-auth
                   key: key
+            - name: TCP_SERVICES_CONFIGMAP
+              value: tcp-services                  

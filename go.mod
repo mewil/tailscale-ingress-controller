@@ -1,4 +1,4 @@
-module github.com/mewil/tailscale-ingress-controller
+module github.com/valentinalexeev/tailscale-ingress-controller
 
 go 1.19
 
@@ -102,6 +102,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gvisor.dev/gvisor v0.0.0-20230504175454-7b0a1988a28f // indirect
 	inet.af/peercred v0.0.0-20210906144145-0893ea02156a // indirect
+	inet.af/tcpproxy v0.0.0-20221017015627-91f861402626 // indirect
 	k8s.io/klog/v2 v2.100.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20230501164219-8b0f38b5fd1f // indirect
 	k8s.io/utils v0.0.0-20230406110748-d93618cff8a2 // indirect

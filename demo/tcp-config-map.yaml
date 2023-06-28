@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tcp-services
+  namespace: default
+data:
+  clickhouse.9000: clickhouse/clickhouse-1687979852:tcp
