@@ -18,7 +18,16 @@ If all goes well, you should be able to access the hello world HTTP demo service
 The demo manifests create a demo backend deployment and service, a demo ingress resource, a deployment for the ingress controller, and a secret for your Tailscale key.
 The controller will create a Tailscale node with the hostname `demo` and proxy traffic from the Tailscale network to the backend Kubernetes service.
 
-The controller proxy server will also parse the remote IP address from Tailscale and add `X-Webauth-User` and `X-Webauth-Name` HTTP headers to the request before forwarding it for the Tailscale login name and display name, respectively.
+### Tailscale SSO
+As Tailscale provides authentication information as part of the requests the Ingress Controller is able to supply this information to the services.
+
+The controller proxy server will parse the remote IP address from Tailscale and add `X-Webauth-User` and `X-Webauth-Name` HTTP headers to the request before forwarding it for the Tailscale login name and display name, respectively.
+
+The services can be configured to use the provided headers as SSO credentials. See sample use case on [How To Seamlessly Authenticate to Grafana using Tailscale](https://tailscale.com/blog/grafana-auth/)
+
+### TLS support
+Tailscale provides native HTTPS implementation with certificates by Let's Encrypt. 
+
 If the host is also listed in the `tls` section of the Ingress spec (see comment in the example Ingress to try it), then the Tailscale node will proxy requests from port 443 instead of 80 and [automatically generate a certificate for itself](https://tailscale.com/blog/tls-certs/).
 
 ### Funnel support
