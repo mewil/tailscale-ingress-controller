@@ -32,6 +32,7 @@ type host struct {
 	started, deleted bool
 	useTls           bool
 	useFunnel        bool
+	generation       int64
 }
 
 type hostPath struct {
@@ -99,8 +100,20 @@ func (c *controller) update(payload *update) {
 				log.Println("ignoring ingress rule without http")
 				continue
 			}
-			_, ok := c.hosts[rule.Host]
-			if !ok {
+			existingHost, ok := c.hosts[rule.Host]
+			if !ok || existingHost.generation < ingress.Generation {
+				if ok {
+					// We already have a host with the same name but now the resource configuration
+					// is updated. We need to re-create the host with any new settings.
+					log.Printf("Ingress definition for host %s changed from %d to %d, restarting Tailscale host",
+						rule.Host,
+						existingHost.generation,
+						ingress.Generation,
+					)
+					existingHost.tsServer.Close()
+					delete(c.hosts, rule.Host)
+				}
+
 				confDir, err := os.UserConfigDir()
 				if err != nil {
 					log.Println("failed to get user config dir: ", err)
@@ -120,8 +133,9 @@ func (c *controller) update(payload *update) {
 						Ephemeral: true,
 						AuthKey:   c.tsAuthKey,
 					},
-					useTls:    useTls,
-					useFunnel: useFunnel,
+					useTls:     useTls,
+					useFunnel:  useFunnel,
+					generation: ingress.Generation,
 				}
 			}
 			c.hosts[rule.Host].deleted = false
