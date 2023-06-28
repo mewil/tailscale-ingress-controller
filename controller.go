@@ -31,6 +31,7 @@ type host struct {
 	pathMap          map[string]*hostPath
 	started, deleted bool
 	useTls           bool
+	useFunnel        bool
 }
 
 type hostPath struct {
@@ -78,6 +79,8 @@ func (c *controller) update(payload *update) {
 	}
 	for _, ingress := range payload.ingresses {
 		tlsHosts := make(map[string]struct{})
+		_, useFunnel := ingress.Annotations["tailscale.com/funnel"]
+
 		for _, t := range ingress.Spec.TLS {
 			for _, h := range t.Hosts {
 				tlsHosts[h] = struct{}{}
@@ -117,7 +120,8 @@ func (c *controller) update(payload *update) {
 						Ephemeral: true,
 						AuthKey:   c.tsAuthKey,
 					},
-					useTls: useTls,
+					useTls:    useTls,
+					useFunnel: useFunnel,
 				}
 			}
 			c.hosts[rule.Host].deleted = false
@@ -203,7 +207,10 @@ func (c *controller) update(payload *update) {
 
 		var ln net.Listener
 		var err error
-		if h.useTls {
+
+		if h.useFunnel {
+			ln, err = h.tsServer.ListenFunnel("tcp", ":443")
+		} else if h.useTls {
 			ln, err = h.tsServer.Listen("tcp", ":443")
 		} else {
 			ln, err = h.tsServer.Listen("tcp", ":80")
