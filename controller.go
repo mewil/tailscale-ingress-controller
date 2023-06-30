@@ -93,6 +93,30 @@ func generateTsDir(prefix, host string) (*string, error) {
 	return &dir, nil
 }
 
+func resolveTargetAddress(targetAddress, targetPort string) (*string, error) {
+	var fullTargetAddress string
+	// check if targetPort is number or service name
+	if targetPortNumber, err := strconv.Atoi(targetPort); err == nil {
+		fullTargetAddress = fmt.Sprintf("%s:%d", targetAddress, targetPortNumber)
+	} else {
+		// targetPort is a service name, must resolve
+		_, addrs, err := net.LookupSRV(targetPort, "tcp", targetAddress)
+		var port int16
+		if err == nil {
+			for _, service := range addrs {
+				// XXX: is there a possibility of multiple answers for the k8s SRV request?
+				port = int16(service.Port)
+				break
+			}
+		} else {
+			log.Printf("TIC: Unable to resolve service to port number: %s: %s", targetPort, err.Error())
+			return nil, fmt.Errorf("unable to resolve service to port number %s: %s", targetPort, err.Error())
+		}
+		fullTargetAddress = fmt.Sprintf("%s:%d", targetAddress, port)
+	}
+	return &fullTargetAddress, nil
+}
+
 func (c *controller) updateConfigMap(payload *updateConfigMap) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -125,7 +149,8 @@ func (c *controller) updateConfigMap(payload *updateConfigMap) {
 			}
 
 			// construct target service address
-			var targetAddress, fullTargetAddress string
+			var targetAddress string
+			var fullTargetAddress *string
 
 			targetNamespace, targetService, found := strings.Cut(targetServiceRef, "/")
 			if found {
@@ -136,24 +161,10 @@ func (c *controller) updateConfigMap(payload *updateConfigMap) {
 				targetAddress = targetServiceRef
 			}
 
-			// check if targetPort is number or service name
-			if targetPortNumber, err := strconv.Atoi(targetPort); err == nil {
-				fullTargetAddress = fmt.Sprintf("%s:%d", targetAddress, targetPortNumber)
-			} else {
-				// targetPort is a service name, must resolve
-				_, addrs, err := net.LookupSRV(targetPort, "tcp", targetAddress)
-				var port int32
-				if err == nil {
-					for _, service := range addrs {
-						// XXX: is there a possibility of multiple answers for the k8s SRV request?
-						port = int32(service.Port)
-						break
-					}
-				} else {
-					log.Printf("TIC: Unable to resolve service to port number: %s: %s", targetPort, err.Error())
-					continue
-				}
-				fullTargetAddress = fmt.Sprintf("%s:%d", targetAddress, port)
+			fullTargetAddress, err := resolveTargetAddress(targetAddress, targetPort)
+
+			if err != nil {
+				log.Printf("TIC: unable to resolve target address %v", err)
 			}
 
 			dir, err := generateTsDir("tsproxy", tailnetHost)
@@ -183,11 +194,11 @@ func (c *controller) updateConfigMap(payload *updateConfigMap) {
 				tsServer,
 				proxy,
 			}
-			proxy.AddRoute(":"+tailnetPort, tcpproxy.To(fullTargetAddress))
+			proxy.AddRoute(":"+tailnetPort, tcpproxy.To(*fullTargetAddress))
 
 			// launch a dedicated goroutine with the proxy
 			go func() {
-				log.Printf("TIC: Starting TCP proxy %s:%s -> %s", tailnetHost, tailnetPort, fullTargetAddress)
+				log.Printf("TIC: Starting TCP proxy %s:%s -> %s", tailnetHost, tailnetPort, *fullTargetAddress)
 				proxy.Run()
 			}()
 		}
@@ -273,25 +284,27 @@ func (c *controller) update(payload *update) {
 					continue
 				}
 
-				var port int32
+				var fullTargetAddress string
 
+				// port can be given as a service name or as a number
 				if path.Backend.Service.Port.Name != "" {
-					_, addrs, err := net.LookupSRV(
+					resolvedAddress, err := resolveTargetAddress(
+						fmt.Sprintf("%s.%s.svc.cluster.local", path.Backend.Service.Name, ingress.Namespace),
 						path.Backend.Service.Port.Name,
-						"tcp",
-						fmt.Sprintf("%s.%s.svc.cluster.local", path.Backend.Service.Name, ingress.Namespace))
-					if err == nil {
-						for _, service := range addrs {
-							// XXX: is there a possibility of multiple answers for the k8s SRV request?
-							port = int32(service.Port)
-							break
-						}
-					} else {
-						log.Printf("TIC: Unable to resolve service to port number: %s: %s", path.Backend.Service.Port.Name, err.Error())
+					)
+
+					if err != nil {
+						log.Printf("TIC: Unable to resolve target address: %v", err.Error())
 						continue
 					}
+					fullTargetAddress = *resolvedAddress
 				} else {
-					port = path.Backend.Service.Port.Number
+					fullTargetAddress = fmt.Sprintf(
+						"%s.%s.svc.cluster.local:%d",
+						path.Backend.Service.Name,
+						ingress.Namespace,
+						path.Backend.Service.Port.Number,
+					)
 				}
 
 				p := &hostPath{
@@ -299,7 +312,7 @@ func (c *controller) update(payload *update) {
 					exact: *path.PathType == v1.PathTypeExact,
 					backend: &url.URL{
 						Scheme: "http",
-						Host:   fmt.Sprintf("%s.%s.svc.cluster.local:%d", path.Backend.Service.Name, ingress.Namespace, port),
+						Host:   fullTargetAddress,
 					},
 				}
 
