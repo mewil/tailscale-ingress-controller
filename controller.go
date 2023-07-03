@@ -39,8 +39,9 @@ type host struct {
 }
 
 type tcpHost struct {
-	tsServer *tsnet.Server
-	proxy    *tcpproxy.Proxy
+	tsServer  *tsnet.Server
+	proxy     *tcpproxy.Proxy
+	signature string
 }
 
 type hostPath struct {
@@ -126,14 +127,9 @@ func (c *controller) updateConfigMap(payload *updateConfigMap) {
 			continue
 		}
 
-		// close all existing tcpHosts
-		for idx, tcpHost := range c.tcpHosts {
-			tcpHost.proxy.Close()
-			tcpHost.tsServer.Close()
-			delete(c.tcpHosts, idx)
-		}
+		aliveHosts := make(map[string]bool)
 
-		// go through the ConfigMap to re-create services
+		// go through the ConfigMap to re-create services that were changed
 		for sourceSpec, targetSpec := range configMap.Data {
 			// tailnet-host-name.port
 			tailnetHost, tailnetPort, ok := strings.Cut(sourceSpec, ".")
@@ -146,6 +142,25 @@ func (c *controller) updateConfigMap(payload *updateConfigMap) {
 			if !ok {
 				log.Printf("TIC: Invalid target spec [%s], must be [<namespace>/]<service>:<port> format", sourceSpec)
 				continue
+			}
+
+			aliveHosts[tailnetHost] = true
+
+			oldHost, ok := c.tcpHosts[tailnetHost]
+
+			if ok {
+				// there is already a TCP proxy host with this name
+				if oldHost.signature != fmt.Sprintf("%s: %s", sourceSpec, targetSpec) {
+					// if host signature does not match — re-create
+					log.Printf("TIC: Host [%s] was updated, re-creating", sourceSpec)
+					oldHost.proxy.Close()
+					oldHost.tsServer.Close()
+					delete(c.tcpHosts, tailnetHost)
+				} else {
+					// skip host if signature is the same
+					log.Printf("TIC: Host [%s] was not changed, skipping", sourceSpec)
+					continue
+				}
 			}
 
 			// construct target service address
@@ -191,9 +206,12 @@ func (c *controller) updateConfigMap(payload *updateConfigMap) {
 				},
 			}
 
+			signature := fmt.Sprintf("%s: %s", sourceSpec, targetSpec)
+
 			c.tcpHosts[tailnetHost] = &tcpHost{
 				tsServer,
 				proxy,
+				signature,
 			}
 			proxy.AddRoute(":"+tailnetPort, tcpproxy.To(*fullTargetAddress))
 
@@ -202,6 +220,17 @@ func (c *controller) updateConfigMap(payload *updateConfigMap) {
 				log.Printf("TIC: Starting TCP proxy %s:%s -> %s", tailnetHost, tailnetPort, *fullTargetAddress)
 				proxy.Run()
 			}()
+		}
+
+		// remove hosts that are no longer present in the ConfigMap
+		for idx, host := range c.tcpHosts {
+			if _, ok := aliveHosts[idx]; !ok {
+				log.Printf("TIC: host [%s] no longer alive in ConfigMap, removing", idx)
+				// if host was not found in the alive hosts
+				host.proxy.Close()
+				host.tsServer.Close()
+				delete(c.tcpHosts, idx)
+			}
 		}
 	}
 }
