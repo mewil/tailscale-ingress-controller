@@ -165,6 +165,7 @@ func (c *controller) updateConfigMap(payload *updateConfigMap) {
 
 			if err != nil {
 				log.Printf("TIC: unable to resolve target address %v", err)
+				continue
 			}
 
 			dir, err := generateTsDir("tsproxy", tailnetHost)
