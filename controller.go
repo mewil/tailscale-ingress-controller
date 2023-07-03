@@ -145,9 +145,9 @@ func (c *controller) updateConfigMap(payload *updateConfigMap) {
 				continue
 			}
 
-			aliveHosts[tailnetHost] = true
+			aliveHosts[sourceSpec] = true
 
-			oldHost, ok := c.tcpHosts[tailnetHost]
+			oldHost, ok := c.tcpHosts[sourceSpec]
 
 			if ok {
 				// there is already a TCP proxy host with this name
@@ -216,7 +216,7 @@ func (c *controller) updateConfigMap(payload *updateConfigMap) {
 
 			signature := fmt.Sprintf("%s: %s", sourceSpec, targetSpec)
 
-			c.tcpHosts[tailnetHost] = &tcpHost{
+			c.tcpHosts[sourceSpec] = &tcpHost{
 				tsServer,
 				proxy,
 				signature,
