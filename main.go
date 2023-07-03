@@ -97,7 +97,8 @@ func main() {
 		log.Fatal("TIS: missing TS_AUTHKEY")
 	}
 
-	c := newController(tsAuthKey)
+	c := NewHttpController(tsAuthKey)
+	cTcp := NewTcpController(tsAuthKey)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	s := make(chan os.Signal, 1)
@@ -105,9 +106,10 @@ func main() {
 	go func() {
 		<-s
 		c.shutdown()
+		cTcp.shutdown()
 		log.Println("shutting down")
 		cancel()
 		os.Exit(0)
 	}()
-	listen(ctx, client, c.update, c.updateConfigMap)
+	listen(ctx, client, c.update, cTcp.update)
 }

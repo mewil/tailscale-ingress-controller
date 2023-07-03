@@ -15,17 +15,15 @@ import (
 	"strings"
 	"sync"
 
-	"inet.af/tcpproxy"
 	v1 "k8s.io/api/networking/v1"
 	"tailscale.com/ipn/store/kubestore"
 	"tailscale.com/tsnet"
 )
 
-type controller struct {
+type HttpController struct {
 	tsAuthKey string
 	mu        sync.RWMutex
 	hosts     map[string]*host
-	tcpHosts  map[string]*tcpHost
 }
 
 type host struct {
@@ -36,13 +34,8 @@ type host struct {
 	started, deleted bool
 	useTls           bool
 	useFunnel        bool
+	enableLogging    bool
 	generation       int64
-}
-
-type tcpHost struct {
-	tsServer  *tsnet.Server
-	proxy     *tcpproxy.Proxy
-	signature string
 }
 
 type hostPath struct {
@@ -51,16 +44,15 @@ type hostPath struct {
 	backend *url.URL
 }
 
-func newController(tsAuthKey string) *controller {
-	return &controller{
+func NewHttpController(tsAuthKey string) *HttpController {
+	return &HttpController{
 		tsAuthKey: tsAuthKey,
 		mu:        sync.RWMutex{},
 		hosts:     make(map[string]*host),
-		tcpHosts:  make(map[string]*tcpHost),
 	}
 }
 
-func (c *controller) getBackendUrl(host, path string, rawquery string) (*url.URL, error) {
+func (c *HttpController) getBackendUrl(host, path string, rawquery string) (*url.URL, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	h, ok := c.hosts[host]
@@ -119,131 +111,7 @@ func resolveTargetAddress(targetAddress, targetPort string) (*string, error) {
 	return &fullTargetAddress, nil
 }
 
-func (c *controller) updateConfigMap(payload *updateConfigMap) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	for _, configMap := range payload.configMaps {
-		if configMap.Name != os.Getenv("TCP_SERVICES_CONFIGMAP") {
-			continue
-		}
-
-		aliveHosts := make(map[string]bool)
-
-		// go through the ConfigMap to re-create services that were changed
-		for sourceSpec, targetSpec := range configMap.Data {
-			// tailnet-host-name.port
-			tailnetHost, tailnetPort, ok := strings.Cut(sourceSpec, ".")
-			if !ok {
-				log.Printf("TIC: Invalid tailnet spec [%s], must be <host>.<port> format", sourceSpec)
-				continue
-			}
-			// [namespace/]service:port
-			targetServiceRef, targetPort, ok := strings.Cut(targetSpec, ":")
-			if !ok {
-				log.Printf("TIC: Invalid target spec [%s], must be [<namespace>/]<service>:<port> format", sourceSpec)
-				continue
-			}
-
-			aliveHosts[sourceSpec] = true
-
-			oldHost, ok := c.tcpHosts[sourceSpec]
-
-			if ok {
-				// there is already a TCP proxy host with this name
-				if oldHost.signature != fmt.Sprintf("%s: %s", sourceSpec, targetSpec) {
-					// if host signature does not match — re-create
-					log.Printf("TIC: Host [%s] was updated, re-creating", sourceSpec)
-					oldHost.proxy.Close()
-					oldHost.tsServer.Close()
-					delete(c.tcpHosts, tailnetHost)
-				} else {
-					// skip host if signature is the same
-					log.Printf("TIC: Host [%s] was not changed, skipping", sourceSpec)
-					continue
-				}
-			}
-
-			// construct target service address
-			var targetAddress string
-			var fullTargetAddress *string
-
-			targetNamespace, targetService, found := strings.Cut(targetServiceRef, "/")
-			if found {
-				// generate FQDN
-				targetAddress = fmt.Sprintf("%s.%s.svc.cluster.local", targetService, targetNamespace)
-			} else {
-				// assume same namespace
-				targetAddress = targetServiceRef
-			}
-
-			fullTargetAddress, err := resolveTargetAddress(targetAddress, targetPort)
-
-			if err != nil {
-				log.Printf("TIC: unable to resolve target address %v", err)
-				continue
-			}
-
-			dir, err := generateTsDir("tsproxy", tailnetHost)
-
-			if err != nil {
-				log.Printf("TIC: Unable to create dir for tsnet: %s", err.Error())
-				continue
-			}
-
-			kubeStore, err := kubestore.New(log.Printf, fmt.Sprintf("tsproxy-%s", tailnetHost))
-
-			if err != nil {
-				log.Printf("TIC: unable to create kubestore: %s", err.Error())
-			}
-
-			// initialize tsnet
-			tsServer := &tsnet.Server{
-				Dir:       *dir,
-				Hostname:  tailnetHost,
-				Ephemeral: true,
-				AuthKey:   c.tsAuthKey,
-				Logf:      nil,
-				Store:     kubeStore,
-			}
-
-			// setup proxy
-			proxy := &tcpproxy.Proxy{
-				ListenFunc: func(net, laddr string) (net.Listener, error) {
-					return tsServer.Listen(net, laddr)
-				},
-			}
-
-			signature := fmt.Sprintf("%s: %s", sourceSpec, targetSpec)
-
-			c.tcpHosts[sourceSpec] = &tcpHost{
-				tsServer,
-				proxy,
-				signature,
-			}
-			proxy.AddRoute(":"+tailnetPort, tcpproxy.To(*fullTargetAddress))
-
-			// launch a dedicated goroutine with the proxy
-			go func() {
-				log.Printf("TIC: Starting TCP proxy %s:%s -> %s", tailnetHost, tailnetPort, *fullTargetAddress)
-				proxy.Run()
-			}()
-		}
-
-		// remove hosts that are no longer present in the ConfigMap
-		for idx, host := range c.tcpHosts {
-			if _, ok := aliveHosts[idx]; !ok {
-				log.Printf("TIC: host [%s] no longer alive in ConfigMap, removing", idx)
-				// if host was not found in the alive hosts
-				host.proxy.Close()
-				host.tsServer.Close()
-				delete(c.tcpHosts, idx)
-			}
-		}
-	}
-}
-
-func (c *controller) update(payload *update) {
+func (c *HttpController) update(payload *update) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for h := range c.hosts {
@@ -251,7 +119,8 @@ func (c *controller) update(payload *update) {
 	}
 	for _, ingress := range payload.ingresses {
 		tlsHosts := make(map[string]struct{})
-		_, useFunnel := ingress.Annotations["tailscale.com/funnel"]
+		_, useFunnel := ingress.Labels["tailscale.com/funnel"]
+		_, enableLogging := ingress.Labels["tailscale.com/logging"]
 
 		for _, t := range ingress.Spec.TLS {
 			for _, h := range t.Hosts {
@@ -309,9 +178,10 @@ func (c *controller) update(payload *update) {
 						AuthKey:   c.tsAuthKey,
 						Logf:      nil,
 					},
-					useTls:     useTls,
-					useFunnel:  useFunnel,
-					generation: ingress.Generation,
+					useTls:        useTls,
+					useFunnel:     useFunnel,
+					enableLogging: enableLogging,
+					generation:    ingress.Generation,
 				}
 			}
 			c.hosts[rule.Host].deleted = false
@@ -445,7 +315,9 @@ func (c *controller) update(payload *update) {
 				}
 				req.Header.Set("X-Webauth-User", who.UserProfile.LoginName)
 				req.Header.Set("X-Webauth-Name", who.UserProfile.DisplayName)
-				log.Printf("TIC: Proxying HTTP request for host %s to [%s]", r.Host, backendURL)
+				if h.enableLogging {
+					log.Printf("TIC: Proxying HTTP request for host %s to [%s]", r.Host, backendURL)
+				}
 			}
 			proxy := &httputil.ReverseProxy{Director: director}
 			proxy.ServeHTTP(w, r)
@@ -463,7 +335,7 @@ func (c *controller) update(payload *update) {
 	}
 }
 
-func (c *controller) shutdown() {
+func (c *HttpController) shutdown() {
 	// shutdown HTTP proxies
 	for n, h := range c.hosts {
 		if h.started {
@@ -476,16 +348,5 @@ func (c *controller) shutdown() {
 			}
 			delete(c.hosts, n)
 		}
-	}
-
-	// shutdown TCP proxies
-	for idx, tcpHost := range c.tcpHosts {
-		if err := tcpHost.proxy.Close(); err != nil {
-			log.Printf("Unable to close TCP proxy: %v", err)
-		}
-		if err := tcpHost.tsServer.Close(); err != nil {
-			log.Printf("Unable to close ts server: %v", err)
-		}
-		delete(c.tcpHosts, idx)
 	}
 }

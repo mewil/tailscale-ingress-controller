@@ -40,7 +40,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: tailscale-ingress-funnel
-  annotations:
+  labels:
     tailscale.com/funnel: "true"
 spec:
   rules:
