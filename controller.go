@@ -17,6 +17,7 @@ import (
 
 	"inet.af/tcpproxy"
 	v1 "k8s.io/api/networking/v1"
+	"tailscale.com/ipn/store/kubestore"
 	"tailscale.com/tsnet"
 )
 
@@ -190,6 +191,12 @@ func (c *controller) updateConfigMap(payload *updateConfigMap) {
 				continue
 			}
 
+			kubeStore, err := kubestore.New(log.Printf, fmt.Sprintf("tsproxy-%s", tailnetHost))
+
+			if err != nil {
+				log.Printf("TIC: unable to create kubestore: %s", err.Error())
+			}
+
 			// initialize tsnet
 			tsServer := &tsnet.Server{
 				Dir:       *dir,
@@ -197,6 +204,7 @@ func (c *controller) updateConfigMap(payload *updateConfigMap) {
 				Ephemeral: true,
 				AuthKey:   c.tsAuthKey,
 				Logf:      nil,
+				Store:     kubeStore,
 			}
 
 			// setup proxy
@@ -285,10 +293,17 @@ func (c *controller) update(payload *update) {
 				}
 
 				_, useTls := tlsHosts[rule.Host]
+
+				kubeStore, err := kubestore.New(log.Printf, fmt.Sprintf("ts-%s", rule.Host))
+
+				if err != nil {
+					log.Printf("TIC: unable to create kubestore: %s", err.Error())
+				}
+
 				c.hosts[rule.Host] = &host{
 					tsServer: &tsnet.Server{
-						Dir: *dir,
-						//Store:     nil, TODO: store in k8s
+						Dir:       *dir,
+						Store:     kubeStore,
 						Hostname:  rule.Host,
 						Ephemeral: true,
 						AuthKey:   c.tsAuthKey,

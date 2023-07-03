@@ -73,7 +73,6 @@ data:
 * Deploy controller with an additional environment variable ``TCP_SERVICES_CONFIGMAP`` set to the name of the newly created ConfigMap.
 
 ## Future Work
-- Store Tailscale state in a Kubernetes Secret
 - Support Ingress Classes
 - High Availability
 
