@@ -21,18 +21,28 @@ import (
 	"tailscale.com/tsnet"
 )
 
+// TcpController state
 type TcpController struct {
+	// Tailscale auth key
 	tsAuthKey string
-	mu        sync.RWMutex
-	hosts     map[string]*TcpHost
+	// Mutex to control access to shared hosts structure
+	mu sync.RWMutex
+	// Map of TcpHost proxies
+	hosts map[string]*TcpHost
 }
 
+// An individual TCP proxy server
 type TcpHost struct {
-	tsServer  *tsnet.Server
-	proxy     *tcpproxy.Proxy
+	// Tailscale leg of the proxy
+	tsServer *tsnet.Server
+	// Backend service proxy
+	proxy *tcpproxy.Proxy
+	// ConfigMap parameters signature to check
+	// if configuration was updated
 	signature string
 }
 
+// Create a new controller with a specified tsAuthKey for Tailscale
 func NewTcpController(tsAuthKey string) *TcpController {
 	return &TcpController{
 		tsAuthKey: tsAuthKey,
@@ -41,6 +51,7 @@ func NewTcpController(tsAuthKey string) *TcpController {
 	}
 }
 
+// Update controller state with the data from ConfigMap
 func (c *TcpController) update(payload *updateConfigMap) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -165,6 +176,7 @@ func (c *TcpController) update(payload *updateConfigMap) {
 	}
 }
 
+// Shutdown all TCP proxy connections and listeners.
 func (c *TcpController) shutdown() {
 	c.mu.Lock()
 	defer c.mu.Unlock()

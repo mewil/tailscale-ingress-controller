@@ -27,38 +27,58 @@ import (
 	"tailscale.com/tsnet"
 )
 
+// HttpController state
 type HttpController struct {
+	// Tailscale authentication key
 	tsAuthKey string
-	mu        sync.RWMutex
-	hosts     map[string]*host
+	// Mutex for shared hosts map
+	mu sync.RWMutex
+	// HTTP proxies for each Ingress host
+	hosts map[string]*HttpHost
 }
 
-type host struct {
-	tsServer         *tsnet.Server
-	httpServer       *http.Server
-	pathPrefixes     []*hostPath
-	pathMap          map[string]*hostPath
+// State of the HTTP proxy
+type HttpHost struct {
+	// Tailscale leg of the proxy
+	tsServer *tsnet.Server
+	// HTTP connection to backoffice service
+	httpServer *http.Server
+	// Path prefixes to match this host
+	pathPrefixes []*HttpHostPath
+	// Path map to direct to this host
+	pathMap map[string]*HttpHostPath
+	// Host state
 	started, deleted bool
-	useTls           bool
-	useFunnel        bool
-	enableLogging    bool
-	generation       int64
+	// If Tailscale TLS will be requested for the service
+	useTls bool
+	// If Tailscale Funnel will be requested for the service
+	useFunnel bool
+	// If TIC will log the requests passing
+	enableLogging bool
+	// Version of the HTTP setup to track changes
+	generation int64
 }
 
-type hostPath struct {
-	value   string
-	exact   bool
+// A path associated with the host
+type HttpHostPath struct {
+	// A matching part of the specification
+	value string
+	// If it is an exact match
+	exact bool
+	// Reference to the backend service
 	backend *url.URL
 }
 
+// Create a new HTTP controller with a specified Tailscale auth key
 func NewHttpController(tsAuthKey string) *HttpController {
 	return &HttpController{
 		tsAuthKey: tsAuthKey,
 		mu:        sync.RWMutex{},
-		hosts:     make(map[string]*host),
+		hosts:     make(map[string]*HttpHost),
 	}
 }
 
+// Find a backend target for the specific host and incoming request
 func (c *HttpController) getBackendUrl(host, path string, rawquery string) (*url.URL, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -82,6 +102,7 @@ func (c *HttpController) getBackendUrl(host, path string, rawquery string) (*url
 	return nil, fmt.Errorf("path not found")
 }
 
+// Generate a tsnet state folder name at the specific prefix and host
 func generateTsDir(prefix, host string) (*string, error) {
 	confDir, err := os.UserConfigDir()
 	if err != nil {
@@ -94,6 +115,7 @@ func generateTsDir(prefix, host string) (*string, error) {
 	return &dir, nil
 }
 
+// Turn K8s service name into an actual port number (if necessary)
 func resolveTargetAddress(targetAddress, targetPort string) (*string, error) {
 	var fullTargetAddress string
 	// check if targetPort is number or service name
@@ -118,6 +140,7 @@ func resolveTargetAddress(targetAddress, targetPort string) (*string, error) {
 	return &fullTargetAddress, nil
 }
 
+// Refresh controller state from the set of Ingress objects
 func (c *HttpController) update(payload *update) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -176,7 +199,7 @@ func (c *HttpController) update(payload *update) {
 					log.Printf("TIC: unable to create kubestore: %s", err.Error())
 				}
 
-				c.hosts[rule.Host] = &host{
+				c.hosts[rule.Host] = &HttpHost{
 					tsServer: &tsnet.Server{
 						Dir:       *dir,
 						Store:     kubeStore,
@@ -199,7 +222,7 @@ func (c *HttpController) update(payload *update) {
 
 			for _, path := range rule.HTTP.Paths {
 				if _, ok = c.hosts[rule.Host].pathMap[path.Path]; !ok {
-					c.hosts[rule.Host].pathMap = make(map[string]*hostPath, 0)
+					c.hosts[rule.Host].pathMap = make(map[string]*HttpHostPath, 0)
 				}
 				if path.PathType == nil {
 					log.Println("TIC: ignoring ingress path without path type")
@@ -229,7 +252,7 @@ func (c *HttpController) update(payload *update) {
 					)
 				}
 
-				p := &hostPath{
+				p := &HttpHostPath{
 					value: path.Path,
 					exact: *path.PathType == v1.PathTypeExact,
 					backend: &url.URL{
@@ -240,14 +263,14 @@ func (c *HttpController) update(payload *update) {
 
 				c.hosts[rule.Host].pathMap[p.value] = p
 				if !p.exact {
-					appendSorted := func(l []*hostPath, e *hostPath) []*hostPath {
+					appendSorted := func(l []*HttpHostPath, e *HttpHostPath) []*HttpHostPath {
 						i := sort.Search(len(l), func(i int) bool {
 							return len(l[i].value) < len(e.value)
 						})
 						if i == len(l) {
 							return append(l, e)
 						}
-						l = append(l, &hostPath{})
+						l = append(l, &HttpHostPath{})
 						copy(l[i+1:], l[i:])
 						l[i] = e
 						return l
@@ -342,6 +365,7 @@ func (c *HttpController) update(payload *update) {
 	}
 }
 
+// Shutdown HTTP reverse proxies
 func (c *HttpController) shutdown() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -364,6 +388,9 @@ type update struct {
 	ingresses []*v1.Ingress
 }
 
+// Listen to updates on the Ingress objects
+// @param ctx Go context to operate in
+// @param client a K8s client interface
 func (c *HttpController) listen(ctx context.Context, client kubernetes.Interface) {
 	factory := informers.NewSharedInformerFactory(client, time.Minute)
 	ingressLister := factory.Networking().V1().Ingresses().Lister()
