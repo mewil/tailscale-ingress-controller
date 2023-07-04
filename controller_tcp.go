@@ -158,6 +158,8 @@ func (c *TcpController) update(payload *updateConfigMap) {
 }
 
 func (c *TcpController) shutdown() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	// shutdown TCP proxies
 	for idx, tcpHost := range c.hosts {
 		if err := tcpHost.proxy.Close(); err != nil {

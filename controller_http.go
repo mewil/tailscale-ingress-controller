@@ -336,6 +336,8 @@ func (c *HttpController) update(payload *update) {
 }
 
 func (c *HttpController) shutdown() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	// shutdown HTTP proxies
 	for n, h := range c.hosts {
 		if h.started {
