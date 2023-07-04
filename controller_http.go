@@ -348,12 +348,12 @@ func (c *HttpController) shutdown() {
 	// shutdown HTTP proxies
 	for n, h := range c.hosts {
 		if h.started {
-			log.Println("deleting host ", n)
+			log.Printf("TIC: deleting host %s", n)
 			if err := h.httpServer.Close(); err != nil {
-				log.Printf("failed to close http server: %v", err)
+				log.Printf("TIC: failed to close http server: %v", err)
 			}
 			if err := h.tsServer.Close(); err != nil {
-				log.Printf("failed to close ts server: %v", err)
+				log.Printf("TIC: failed to close ts server: %v", err)
 			}
 			delete(c.hosts, n)
 		}
@@ -371,10 +371,10 @@ func (c *HttpController) listen(ctx context.Context, client kubernetes.Interface
 	onChange := func() {
 		ingresses, err := ingressLister.List(labels.Everything())
 		if err != nil {
-			log.Println("failed to list ingresses: ", err)
+			log.Printf("TIC: failed to list ingresses: %s", err)
 			return
 		}
-		log.Printf("onChange ingress items to review=%d", len(ingresses))
+		log.Printf("TIC: Ingress items to review=%d", len(ingresses))
 		c.update(&update{ingresses})
 	}
 
