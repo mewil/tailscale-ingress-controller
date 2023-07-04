@@ -43,4 +43,5 @@ func main() {
 
 	go cHttp.listen(ctx, client)
 	go cTcp.listen(ctx, client)
+	<-s
 }
