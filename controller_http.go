@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"log"
@@ -14,8 +15,14 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/bep/debounce"
 	v1 "k8s.io/api/networking/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/cache"
 	"tailscale.com/ipn/store/kubestore"
 	"tailscale.com/tsnet"
 )
@@ -351,4 +358,41 @@ func (c *HttpController) shutdown() {
 			delete(c.hosts, n)
 		}
 	}
+}
+
+type update struct {
+	ingresses []*v1.Ingress
+}
+
+func (c *HttpController) listen(ctx context.Context, client kubernetes.Interface) {
+	factory := informers.NewSharedInformerFactory(client, time.Minute)
+	ingressLister := factory.Networking().V1().Ingresses().Lister()
+
+	onChange := func() {
+		ingresses, err := ingressLister.List(labels.Everything())
+		if err != nil {
+			log.Println("failed to list ingresses: ", err)
+			return
+		}
+		log.Printf("onChange ingress items to review=%d", len(ingresses))
+		c.update(&update{ingresses})
+	}
+
+	debounced := debounce.New(time.Second)
+	eventHandler := cache.ResourceEventHandlerFuncs{
+		AddFunc:    func(any) { debounced(onChange) },
+		UpdateFunc: func(any, any) { debounced(onChange) },
+		DeleteFunc: func(any) { debounced(onChange) },
+	}
+
+	go func() {
+		i := factory.Networking().V1().Ingresses().Informer()
+		i.AddEventHandler(eventHandler)
+		i.Run(ctx.Done())
+	}()
+	go func() {
+		i := factory.Core().V1().Services().Informer()
+		i.AddEventHandler(eventHandler)
+		i.Run(ctx.Done())
+	}()
 }

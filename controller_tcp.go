@@ -1,14 +1,22 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
 	"os"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/bep/debounce"
 	"inet.af/tcpproxy"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/cache"
 	"tailscale.com/ipn/store/kubestore"
 	"tailscale.com/tsnet"
 )
@@ -170,4 +178,37 @@ func (c *TcpController) shutdown() {
 		}
 		delete(c.hosts, idx)
 	}
+}
+
+type updateConfigMap struct {
+	configMaps []*corev1.ConfigMap
+}
+
+func (c *TcpController) listen(ctx context.Context, client kubernetes.Interface) {
+	factory := informers.NewSharedInformerFactory(client, time.Minute)
+	configMapLister := factory.Core().V1().ConfigMaps().Lister()
+
+	onConfigMapChange := func() {
+		configMaps, err := configMapLister.List(labels.Everything())
+		if err != nil {
+			log.Println("failed to list config maps: ", err)
+			return
+		}
+		log.Printf("onChange configmap")
+		c.update(&updateConfigMap{configMaps})
+	}
+	debounced := debounce.New(time.Second)
+
+	eventHandlerConfig := cache.ResourceEventHandlerFuncs{
+		AddFunc:    func(any) { debounced(onConfigMapChange) },
+		UpdateFunc: func(any, any) { debounced(onConfigMapChange) },
+		DeleteFunc: func(any) { debounced(onConfigMapChange) },
+	}
+
+	go func() {
+		i := factory.Core().V1().ConfigMaps().Informer()
+		i.AddEventHandler(eventHandlerConfig)
+		i.Run(ctx.Done())
+	}()
+	<-ctx.Done()
 }
