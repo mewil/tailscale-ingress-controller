@@ -27,6 +27,8 @@ import (
 	"tailscale.com/tsnet"
 )
 
+const INGRESS_CLASS_NAME = "tailscale"
+
 // HttpController state
 type HttpController struct {
 	// Tailscale authentication key
@@ -148,6 +150,12 @@ func (c *HttpController) update(payload *update) {
 		c.hosts[h].deleted = true
 	}
 	for _, ingress := range payload.ingresses {
+		if *ingress.Spec.IngressClassName != "" &&
+			*ingress.Spec.IngressClassName != INGRESS_CLASS_NAME {
+			log.Printf("TIC: skipping %s as the ingressClassName %s is not for TIC", ingress.Name, *ingress.Spec.IngressClassName)
+			continue
+		}
+
 		tlsHosts := make(map[string]struct{})
 		_, useFunnel := ingress.Labels["tailscale.com/funnel"]
 		_, enableLogging := ingress.Labels["tailscale.com/logging"]
