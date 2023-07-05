@@ -72,6 +72,13 @@ spec:
       containers:
         - name: tailscale-ingress-controller
           image: valentinalexeev/tailscale-ingress-controller:stable
+          resources:
+            requests:
+              cpu: "0.1"
+              memory: "64Mi"
+            limits:
+              cpu: "0.1"
+              memory: "128Mi"
           env:
             - name: TS_AUTHKEY
               valueFrom:
