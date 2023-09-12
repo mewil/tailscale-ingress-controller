@@ -2,7 +2,7 @@ module github.com/valentinalexeev/tailscale-ingress-controller
 
 go 1.21
 
-toolchain go1.21.1
+//toolchain go1.21.1
 
 require (
 	github.com/bep/debounce v1.2.1
