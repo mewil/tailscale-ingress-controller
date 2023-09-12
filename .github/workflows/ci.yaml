@@ -16,11 +16,11 @@ jobs:
 
       - uses: docker/login-action@v3
         with:
-          username: valentinalexeev
+          username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - uses: docker/build-push-action@v5
         with:
           push: true
           platforms: linux/amd64,linux/arm64
-          tags: valentinalexeev/tailscale-ingress-controller:stable
+          tags: ${{ vars.DOCKERHUB_USERNAME }}/${{ vars.DOCKERHUB_REPO }}:stable
