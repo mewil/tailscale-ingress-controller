@@ -159,6 +159,7 @@ func (c *HttpController) update(payload *update) {
 		tlsHosts := make(map[string]struct{})
 		_, useFunnel := ingress.Labels["tailscale.com/funnel"]
 		_, enableLogging := ingress.Labels["tailscale.com/logging"]
+		_, enableWebClient := ingress.Labels["tailscale.com/webclient"]
 
 		for _, t := range ingress.Spec.TLS {
 			for _, h := range t.Hosts {
@@ -209,12 +210,13 @@ func (c *HttpController) update(payload *update) {
 
 				c.hosts[rule.Host] = &HttpHost{
 					tsServer: &tsnet.Server{
-						Dir:       *dir,
-						Store:     kubeStore,
-						Hostname:  rule.Host,
-						Ephemeral: true,
-						AuthKey:   c.tsAuthKey,
-						Logf:      nil,
+						Dir:          *dir,
+						Store:        kubeStore,
+						Hostname:     rule.Host,
+						Ephemeral:    true,
+						AuthKey:      c.tsAuthKey,
+						Logf:         nil,
+						RunWebClient: enableWebClient,
 					},
 					useTls:        useTls,
 					useFunnel:     useFunnel,
