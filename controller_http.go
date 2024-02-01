@@ -150,9 +150,13 @@ func (c *HttpController) update(payload *update) {
 		c.hosts[h].deleted = true
 	}
 	for _, ingress := range payload.ingresses {
-		if *ingress.Spec.IngressClassName != "" &&
-			*ingress.Spec.IngressClassName != INGRESS_CLASS_NAME {
-			log.Printf("TIC: skipping %s as the ingressClassName %s is not for TIC", ingress.Name, *ingress.Spec.IngressClassName)
+		ingressClassName := ""
+		if ingress.Spec.IngressClassName != nil {
+			ingressClassName = *ingress.Spec.IngressClassName
+		}
+
+		if ingressClassName != INGRESS_CLASS_NAME {
+			log.Printf("TIC: skipping %s as the ingressClassName %s is not for TIC", ingress.Name, ingressClassName)
 			continue
 		}
 
