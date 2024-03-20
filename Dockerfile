@@ -1,4 +1,4 @@
-FROM golang:1.19-alpine as builder
+FROM golang:1.22-alpine as builder
 
 RUN apk add --update \
     ca-certificates \
@@ -6,7 +6,7 @@ RUN apk add --update \
   && rm -rf /var/cache/apk/*
 
 ENV CGO_ENABLED=0
-WORKDIR /go/src/github.com/mewil/tailscale-ingress-controller
+WORKDIR /go/src/github.com/valentinalexeev/tailscale-ingress-controller
 COPY go.mod go.sum ./
 RUN go mod download
 
